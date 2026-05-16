@@ -1,0 +1,338 @@
+#%%
+from PyPDF2 import PdfReader
+from transformers import BertTokenizer, BertForSequenceClassification, pipeline
+import re
+import torch
+import csv
+from sklearn.metrics import accuracy_score,classification_report
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+#ProsusAI/FinBERT model
+'''finbert = BertForSequenceClassification.from_pretrained('ProsusAI/finbert',num_labels=3)
+finbert.to(device)
+tokenizer = BertTokenizer.from_pretrained('ProsusAI/finbert')
+nlp = pipeline("sentiment-analysis", model="ProsusAI/finbert", tokenizer=tokenizer, device=0 if torch.cuda.is_available() else -1)'''
+
+#FinBERT-tone model
+finbert = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone',num_labels=3)
+finbert.to(device)
+tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone')
+nlp = pipeline("sentiment-analysis", model="yiyanghkust/finbert-tone", tokenizer=tokenizer, device=0 if torch.cuda.is_available() else -1)
+
+
+labeledData = r"...\Financial Reports Sentiment\Regular Expressions ProsusAI-FinBERT\UMEMESentimentEvaluations.csv"
+
+Sentences = []
+Sentiment = []
+
+with open(labeledData, mode="r", encoding="utf-8", errors="replace", newline="") as csvfile:
+    reader = csv.reader(csvfile, delimiter=",")
+
+    for row in reader:
+        if len(row) == 2:
+            Sentence, label = row
+            Sentences.append(Sentence.strip())
+            Sentiment.append(label.strip().lower())
+
+#Verifying the imported data
+'''for i in range(20):
+    print(f"{Sentiment[i]} → {Sentences[i]}")'''
+
+
+Predictions = []
+
+for sentence in Sentences:
+    try:
+        result = nlp(sentence[:512])[0]
+        Predictions.append(result["label"].lower())
+    except Exception as e:
+        print(f"Error processing sentence {i}: {e}")
+
+
+accuracy = accuracy_score(Sentiment, Predictions)
+print(f"Accuracy: {accuracy:.2f}")
+print(classification_report(Sentiment, Predictions))
+
+#%%
+#Importing the data
+labeledData = r"...\Financial Reports Sentiment\Regular Expressions ProsusAI-FinBERT\UMEMESentimentEvaluations.csv"
+
+Sentences = []
+Sentiment = []
+
+with open(labeledData, mode="r", encoding="utf-8", errors="replace", newline="") as csvfile:
+    reader = csv.reader(csvfile, delimiter=",")
+
+    for row in reader:
+        if len(row) == 2:
+            Sentence, label = row
+            Sentences.append(Sentence.strip())
+            Sentiment.append(label.strip().lower())
+
+#Verifying the imported data
+'''for i in range(20):
+    print(f"{Sentiment[i]} → {Sentences[i]}")'''
+
+
+Predictions = []
+
+for sentence in Sentences:
+    try:
+        result = nlp(sentence[:512])[0]
+        Predictions.append(result["label"].lower())
+    except Exception as e:
+        print(f"Error processing sentence {i}: {e}")
+
+#from sklearn.metrics import accuracy_score,classification_report
+
+accuracy = accuracy_score(Sentiment, Predictions)
+print(f"Accuracy: {accuracy:.2f}")
+print(classification_report(Sentiment, Predictions))
+#%%
+#VADER
+import pandas as pd
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from sklearn.metrics import classification_report, accuracy_score
+
+#Load data
+df = pd.read_csv(r"...\Financial Reports Sentiment\Regular Expressions ProsusAI-FinBERT\UMEMESentimentEvaluations.csv", header=None)
+df.columns = ['text', 'label']
+
+
+#Initialise VADER
+analyser = SentimentIntensityAnalyzer()
+
+# Convert compound score to sentiment label
+def get_vader_label(text):
+    score = analyser.polarity_scores(text)['compound']
+    if score >= 0.05:
+        return 'Positive'
+    elif score <= -0.05:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+# Apply VADER to each text
+df['vader_prediction'] = df['text'].apply(get_vader_label)
+
+# Accuracy
+accuracy = accuracy_score(df['label'], df['vader_prediction'])
+print(f"Accuracy: {accuracy:.2%}")
+
+# Precision, Recall, F1
+print("\nClassification Report:")
+print(classification_report(df['label'], df['vader_prediction'], digits=2))
+
+#%%
+#TextBlob
+from textblob import TextBlob
+
+# Function to convert TextBlob polarity to sentiment label
+def get_textblob_label(text):
+    polarity = TextBlob(str(text)).sentiment.polarity
+    if polarity > 0.05:
+        return 'Positive'
+    elif polarity < -0.05:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+# Apply TextBlob
+df['textblob_prediction'] = df['text'].apply(get_textblob_label)
+
+# Accuracy
+accuracy = accuracy_score(df['label'], df['textblob_prediction'])
+print(f"TextBlob Accuracy: {accuracy:.2%}")
+
+# Precision, Recall, F1
+print("\nClassification Report:")
+print(classification_report(df['label'], df['textblob_prediction'], digits=2))
+
+#%%
+#AFINN
+from afinn import Afinn
+
+# Initialize AFINN
+afinn = Afinn()
+
+# Convert AFINN score to sentiment label
+def get_afinn_label(text):
+    score = afinn.score(str(text))
+    if score > 0:
+        return 'Positive'
+    elif score < 0:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+# Apply AFINN
+df['afinn_prediction'] = df['text'].apply(get_afinn_label)
+
+# Accuracy
+accuracy = accuracy_score(df['label'], df['afinn_prediction'])
+print(f"AFINN Accuracy: {accuracy:.2%}")
+
+# Precision, Recall, F1
+print("\nClassification Report:")
+print(classification_report(df['label'], df['afinn_prediction'], digits=2))
+
+#%%
+#NRC Lexicon
+from collections import Counter
+
+# Load NRC lexicon
+nrc = {}
+with open(r"...\Financial Reports Sentiment\NRC-Emotion-Lexicon\NRC-Emotion-Lexicon\NRC-Emotion-Lexicon-Wordlevel-v0.92.txt", "r", encoding="utf-8") as f:
+    for line in f:
+        word, emotion, association = line.strip().split('\t')
+        if association == '1':
+            nrc.setdefault(word, []).append(emotion)
+
+# Function to get NRC sentiment label
+def get_nrc_sentiment(text):
+    words = str(text).lower().split()
+    emotions = []
+    for word in words:
+        if word in nrc:
+            emotions.extend(nrc[word])
+    counts = Counter(emotions)
+
+    # Simplified polarity logic
+    if counts['Positive'] > counts['Negative']:
+        return 'Positive'
+    elif counts['Negative'] > counts['Positive']:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+# Apply NRC
+df['nrc_prediction'] = df['text'].apply(get_nrc_sentiment)
+
+# Evaluate
+accuracy = accuracy_score(df['label'], df['nrc_prediction'])
+print(f"NRC Accuracy: {accuracy:.2%}")
+print("\nClassification Report:")
+print(classification_report(df['label'], df['nrc_prediction'], digits=2))
+
+
+#%%
+#BERT
+
+# Load BERT sentiment pipeline
+classifier = pipeline("sentiment-analysis", model="nlptown/bert-base-multilingual-uncased-sentiment")
+
+# Load labeled data manually
+BertData = r"...\Financial Reports Sentiment\Regular Expressions ProsusAI-FinBERT\UMEMESentimentEvaluations.csv"
+
+Sentences = []
+Sentiment = []
+
+with open(BertData, mode="r", encoding="utf-8", errors="replace", newline="") as csvfile:
+    reader = csv.reader(csvfile, delimiter=",")
+    for row in reader:
+        if len(row) == 2:
+            sentence, label = row
+            Sentences.append(sentence.strip())
+            Sentiment.append(label.strip().lower())
+
+# Map BERT output to sentiment label
+def get_bert_label(text):
+    result = classifier(text[:512])[0]['label']
+    if '1' in result or '2' in result:
+        return 'negative'
+    elif '3' in result:
+        return 'neutral'
+    else:
+        return 'positive'
+
+# Apply BERT to each sentence
+Predictions = []
+for i, sentence in enumerate(Sentences):
+    try:
+        prediction = get_bert_label(sentence)
+        Predictions.append(prediction)
+    except Exception as e:
+        print(f"Error processing sentence {i}: {e}")
+
+
+# Evaluate
+accuracy = accuracy_score(Sentiment, Predictions)
+print(f"BERT Accuracy: {accuracy:.2%}")
+print("\nClassification Report:")
+print(classification_report(Sentiment, Predictions, digits=2))
+
+
+#%%
+import nltk
+from nltk.tokenize import sent_tokenize
+
+#Analysing the company annual reports
+#Importing the PDF report
+reader = PdfReader(r"...\Financial Reports Sentiment\UMEME Annual Reports\Umeme-Annual Report-2024.pdf")
+
+#Converting PDF report to text
+full_text = ""
+for page in reader.pages:
+    page_text = page.extract_text()
+    if page_text:
+        full_text += page_text + "\n"
+
+
+sentiment_totals = {}
+sentiment_counts = {}
+LabelWeight = {
+    "Positive":1, "Negative":-1, "Neutral":0
+}
+compoundedTotal = 0
+TotalWeight = 0
+Sentences = []
+
+#Splitting text into sentences/tokens using regular expressions and full stop delimiter.
+tokens = re.split(r'(?<=[^0-9])\.(?=\s|$)', full_text)
+#tokens = sent_tokenize(full_text)
+
+# Write results to CSV
+output_path = "sentiment_results.csv"
+
+with open(output_path, mode="w", encoding="utf-8", newline="") as file:
+    writer = csv.writer(file, quoting=csv.QUOTE_ALL)
+    writer.writerow(["Sentiment Label", "Confidence Score", "Token Text"])
+
+    for i, token in enumerate(tokens):
+        token = token.strip()
+        if token:  # Skip empty strings
+            try:
+                result = nlp(token[:])[0]
+                label = result['label'].capitalize()
+                score = result['score']
+                Sentences.append(
+                    {"Sentiment": label,
+                     "full_text": token
+                    }
+                )
+                weight = LabelWeight.get(label, 0)
+                #print(f"Token {i+1}: [{label}] ({score:.2f}) - {token}")
+                sentiment_totals[label] = sentiment_totals.get(label, 0) + score
+                sentiment_counts[label] = sentiment_counts.get(label, 0) + 1
+                compoundedTotal += weight*score
+                TotalWeight += score
+                writer.writerow([label, f"{score:.2f}", token])
+            except Exception as e:
+                #print()
+                print(f"Error processing token {i+1}: {e}")
+
+
+CompoundScore = compoundedTotal / TotalWeight if TotalWeight > 0 else 0
+
+print(sentiment_counts)
+
+print("Sentiment Summary:")
+for label in sentiment_totals:
+    average = sentiment_totals[label] / sentiment_counts[label]
+    print(f"{label.capitalize()}: {average:.2f}")
+
+
+print(f"Compound Score: {CompoundScore:.2f}")
+
+#%% md
